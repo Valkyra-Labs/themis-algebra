@@ -97,6 +97,12 @@ fn lex(s: &str) -> Result<Vec<(usize, Tok)>, ParseError> {
             '²' => out.push((i, Tok::Sup(2))),
             '³' => out.push((i, Tok::Sup(3))),
             '(' | '[' => out.push((i, Tok::LParen)),
+            '±' => {
+                return Err(ParseError::Unexpected {
+                    at: i,
+                    found: "'±' (write it once per line, as in x = ±3)".into(),
+                })
+            }
             ')' | ']' => out.push((i, Tok::RParen)),
             '=' => out.push((i, Tok::Eq)),
             _ => {
@@ -379,8 +385,70 @@ pub enum Line {
     Equation(Rational),
 }
 
-/// The unknown's letter found in the line, if any.
+/// Split an answer line into its alternatives: `x = 2 or x = 3`,
+/// `x = 2, x = 3`, `x = 2; x = 3`, and `x = ±3` (one `±` expands into a
+/// `+` and a `-` copy).
+fn alternatives(s: &str) -> Vec<String> {
+    let mut parts: Vec<String> = Vec::new();
+    let lower = s.replace(" OR ", " or ").replace(" Or ", " or ");
+    for chunk in lower.split(" or ").flat_map(|c| c.split([',', ';'])) {
+        let chunk = chunk.trim();
+        if chunk.is_empty() {
+            continue;
+        }
+        if chunk.matches('±').count() == 1 {
+            parts.push(chunk.replace('±', "+"));
+            parts.push(chunk.replace('±', "-"));
+        } else {
+            parts.push(chunk.to_string());
+        }
+    }
+    parts
+}
+
+/// Parse a line. An answer line with alternatives (`x = 2 or x = 3`,
+/// `x = ±3`) becomes one equation whose solutions are the union: the
+/// product of the alternatives' `left − right`, with every alternative's
+/// excluded points. The unknown's letter found in the line, if any.
 pub fn parse_line(s: &str) -> Result<(Line, Option<char>), ParseError> {
+    let alts = alternatives(s);
+    if alts.len() > 1 {
+        let mut product: Option<Rational> = None;
+        let mut var = None;
+        for a in &alts {
+            let (line, v) = parse_single(a)?;
+            let Line::Equation(r) = line else {
+                return Err(ParseError::Unexpected {
+                    at: 0,
+                    found: format!("'{a}' (each alternative must be an equation)"),
+                });
+            };
+            if let (Some(x), Some(y)) = (var, v) {
+                if x != y {
+                    return Err(ParseError::TwoUnknowns(x, y));
+                }
+            }
+            var = var.or(v);
+            // The union of solution sets: zeros of the product of numerators.
+            let part = Rational {
+                num: r.num,
+                den: Poly::one(),
+                excluded: r.excluded,
+            };
+            product = Some(match product {
+                None => part,
+                Some(p) => p.mul(&part),
+            });
+        }
+        return Ok((
+            Line::Equation(product.expect("two or more alternatives")),
+            var,
+        ));
+    }
+    parse_single(s)
+}
+
+fn parse_single(s: &str) -> Result<(Line, Option<char>), ParseError> {
     let toks = lex(s)?;
     if toks.is_empty() {
         return Err(ParseError::Empty);
@@ -443,6 +511,17 @@ mod tests {
         assert_eq!(r.num.degree(), Some(1));
         assert!(r.excluded.eval(&q(1)).is_zero());
         assert!(!r.excluded.eval(&q(2)).is_zero());
+    }
+
+    #[test]
+    fn answer_lines_with_alternatives() {
+        let a = eq("x = 3 or x = -3");
+        let b = eq("x = ±3");
+        let c = eq("x = 3, x = -3");
+        let d = eq("x^2 = 9");
+        assert_eq!(a.num.squarefree(), d.num.squarefree());
+        assert_eq!(b.num.squarefree(), d.num.squarefree());
+        assert_eq!(c.num.squarefree(), d.num.squarefree());
     }
 
     #[test]

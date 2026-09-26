@@ -39,6 +39,11 @@ const EQUATIONS: &[(&str, &str, &[&str], &[&str])] = &[
         &["1/2 - √5/2", "1/2 + √5/2"],
         &["0", "1"],
     ),
+    // Answer lines with alternatives.
+    ("x^2 = 9", "x = ±3", &[], &[]),
+    ("x^2 = 9", "x = 3 or x = -3", &[], &[]),
+    ("x^2 - 5x + 6 = 0", "x = 2, x = 3", &[], &[]),
+    ("x^2 - 5x + 6 = 0", "x = 2 or x = -3", &["3"], &["-3"]),
     // Multiplying by an expression that is zero somewhere.
     ("x/(x - 1) = 1/(x - 1)", "x = 1", &[], &["1"]),
     ("(x^2 - 1)/(x - 1) = 2", "x + 1 = 2", &[], &["1"]),
