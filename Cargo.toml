@@ -1,0 +1,26 @@
+[package]
+name = "themis-algebra"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+description = "Step checking for school algebra: exact rational arithmetic, polynomial and rational-function equations, lost and gained roots, domain changes"
+repository = "https://github.com/Valkyra-Labs/themis-algebra"
+readme = "README.md"
+keywords = ["algebra", "education", "math", "polynomial", "cas"]
+categories = ["mathematics", "science"]
+
+[features]
+default = []
+# JavaScript bindings for the browser (wasm-bindgen).
+wasm = ["dep:wasm-bindgen"]
+
+[dependencies]
+num-bigint = "0.4"
+num-rational = "0.4"
+num-traits = "0.2"
+num-integer = "0.1"
+wasm-bindgen = { version = "0.2", optional = true }
+
+[lib]
+crate-type = ["cdylib", "rlib"]
