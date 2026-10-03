@@ -18,7 +18,9 @@ assert_eq!(explain(&c), "This step loses x = 0.");
 
 Status: early. One unknown; polynomial and rational equations and
 expressions with exact rational arithmetic. Roots and radicals in the
-input (`√`), inequalities and systems are not supported yet.
+input (`√`), inequalities and systems are not supported yet. Answer lines
+may list alternatives (`x = 2 or x = 3`, `x = 2, x = 3`, `x = ±3`); they
+are read as the union of their solution sets.
 
 ## How it decides
 
