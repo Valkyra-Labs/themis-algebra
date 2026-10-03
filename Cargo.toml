@@ -27,6 +27,6 @@ crate-type = ["cdylib", "rlib"]
 
 # Smaller WebAssembly: the module ships to learners' browsers.
 [profile.release]
-opt-level = "z"  # 160 KB (68 KB gzipped); "s": 200 KB; default 3: 278 KB
+opt-level = "z"  # measured at 99a98db: 160 KB (68 KB gzipped); "s": 200 KB; default 3: 278 KB
 lto = true
 codegen-units = 1
