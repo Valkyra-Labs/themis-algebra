@@ -43,8 +43,23 @@ Forgetting the negative root, dividing by the unknown, squaring both
 sides, moving a term without changing its sign, distributing to one term
 only, a wrong factorisation, multiplying by an expression that can be
 zero, `(a + b)² = a² + b²`, and cancelling a factor without keeping the
-restriction. The test corpus (`tests/corpus.rs`) holds each of them with
-the verdict and the sentence a learner reads.
+restriction. The test corpus (`tests/corpus.rs`, with its table of
+equation steps in `tests/common/mod.rs`) holds each of them with the
+verdict and the sentence a learner reads.
+
+## Testing
+
+Besides the pinned verdicts, `tests/substitution.rs` checks every
+verdict on the corpus by substitution, with a small floating-point
+evaluator that shares no code with the engine: a lost root must satisfy
+the previous line and not the new one, a gained root the reverse, every
+root of an equivalent step both lines, and a reported change of domain
+must be undefined on one side and defined on the other. Exact roots are
+allowed a relative error of 1e-9, approximate ones 1e-6. It checks the
+roots and domain points the engine names; it does not prove that no
+other root was missed. Only for 300 seeded, generated steps over
+factorised polynomials, whose full solution sets are known by
+construction, is the verdict also compared with the complete answer.
 
 ## License
 
