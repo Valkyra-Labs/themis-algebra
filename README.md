@@ -1,5 +1,17 @@
 # themis-algebra
 
+[![CI](https://github.com/Valkyra-Labs/themis-algebra/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Valkyra-Labs/themis-algebra/actions/workflows/ci.yml)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+[![Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Valkyra-Labs/themis-algebra/badges/tests.json)](https://github.com/Valkyra-Labs/themis-algebra/actions/workflows/ci.yml)
+[![wasm gzip](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Valkyra-Labs/themis-algebra/badges/wasm-size.json)](https://github.com/Valkyra-Labs/themis-algebra/actions/workflows/ci.yml)
+[![MSRV 1.85](https://img.shields.io/badge/MSRV-1.85-blue.svg)](Cargo.toml)
+
+The tests and wasm badges are published by CI from each green run on
+`main`: tests passed in `cargo test --release` on Linux (unit,
+integration and doc tests), and the gzip size (level 9) of the
+WebAssembly module that CI builds with wasm-pack (`--features wasm`).
+CI checks the MSRV with `cargo +1.85 check`.
+
 Step checking for school algebra, in Rust.
 
 A learner writes a line of working; themis-algebra says whether the step
