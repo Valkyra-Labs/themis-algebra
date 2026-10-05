@@ -59,6 +59,25 @@ restriction. The test corpus (`tests/corpus.rs`, with its table of
 equation steps in `tests/common/mod.rs`) holds each of them with the
 verdict and the sentence a learner reads.
 
+## Limits
+
+A line is checked on the device that shows it (in a browser, as
+WebAssembly), so what one line may ask for is bounded. A line over a
+limit gets a `ParseError` that names the limit, never a stack overflow
+or a search without end:
+
+| Limit | Value | Error |
+|---|---|---|
+| Characters in a line | 500 (`MAX_LINE_CHARS`) | `TooLong` |
+| Brackets and signs nested in each other | 64 (`MAX_DEPTH`) | `TooDeep` |
+| Degree of a numerator, a denominator or the excluded points while a line is read | 64 (`MAX_DEGREE`), the largest exponent | `TooComplex` |
+| Alternatives in an answer line | 12 (`MAX_ALTERNATIVES`) | `TooManyAlternatives` |
+
+Within these limits a line made to be hard (a polynomial of a high degree
+with coefficients of many digits) can still take seconds, so an
+application should check lines away from its interface thread, with a
+time limit of its own.
+
 ## Testing
 
 Besides the pinned verdicts, `tests/substitution.rs` checks every

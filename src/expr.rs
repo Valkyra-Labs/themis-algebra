@@ -11,15 +11,50 @@ use num_bigint::BigInt;
 use num_traits::One;
 use std::fmt;
 
+/// The longest line read, in characters.
+pub const MAX_LINE_CHARS: usize = 500;
+/// The deepest nesting of brackets and signs (each sign applies to
+/// everything after it, so `--x` is two levels).
+pub const MAX_DEPTH: usize = 64;
+/// The highest degree of any polynomial a line builds while it is read:
+/// a numerator, a denominator, or the product of the divisors that can
+/// vanish. The same as the largest exponent.
+pub const MAX_DEGREE: usize = 64;
+/// The most alternatives in an answer line (`x = 1 or x = 2 or ...`).
+pub const MAX_ALTERNATIVES: usize = 12;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ParseError {
     Empty,
-    Unexpected { at: usize, found: String },
+    Unexpected {
+        at: usize,
+        found: String,
+    },
     TwoUnknowns(char, char),
-    ExponentNotInteger { at: usize },
-    ExponentTooLarge { at: usize },
+    ExponentNotInteger {
+        at: usize,
+    },
+    ExponentTooLarge {
+        at: usize,
+    },
     DivisionByZero,
     TooManyEquals,
+    /// Longer than [`MAX_LINE_CHARS`]; not read at all.
+    TooLong {
+        max: usize,
+    },
+    /// Brackets and signs nested deeper than [`MAX_DEPTH`].
+    TooDeep {
+        max: usize,
+    },
+    /// A polynomial of a degree above [`MAX_DEGREE`] would be needed.
+    TooComplex {
+        max: usize,
+    },
+    /// More alternatives than [`MAX_ALTERNATIVES`].
+    TooManyAlternatives {
+        max: usize,
+    },
 }
 
 impl fmt::Display for ParseError {
@@ -42,6 +77,15 @@ impl fmt::Display for ParseError {
             }
             ParseError::DivisionByZero => write!(f, "division by zero"),
             ParseError::TooManyEquals => write!(f, "more than one '='"),
+            ParseError::TooLong { max } => write!(f, "the line is longer than {max} characters"),
+            ParseError::TooDeep { max } => {
+                write!(f, "brackets and signs are nested more than {max} deep")
+            }
+            ParseError::TooComplex { max } => write!(
+                f,
+                "the line is too complex to check: its degree is above {max}"
+            ),
+            ParseError::TooManyAlternatives { max } => write!(f, "more than {max} alternatives"),
         }
     }
 }
@@ -226,10 +270,64 @@ impl Rational {
     }
 }
 
+fn deg(p: &Poly) -> usize {
+    p.degree().unwrap_or(0)
+}
+
+/// Refuses an operation whose result could need a polynomial of a degree
+/// above [`MAX_DEGREE`], before any of it is computed; `degrees` are upper
+/// bounds of the numerator, the denominator and the excluded points of
+/// the result.
+fn within_degree(degrees: [usize; 3]) -> Result<(), ParseError> {
+    if degrees.iter().any(|d| *d > MAX_DEGREE) {
+        Err(ParseError::TooComplex { max: MAX_DEGREE })
+    } else {
+        Ok(())
+    }
+}
+
+fn add_degrees(a: &Rational, b: &Rational) -> [usize; 3] {
+    [
+        (deg(&a.num) + deg(&b.den)).max(deg(&b.num) + deg(&a.den)),
+        deg(&a.den) + deg(&b.den),
+        deg(&a.excluded) + deg(&b.excluded),
+    ]
+}
+
+fn mul_degrees(a: &Rational, b: &Rational) -> [usize; 3] {
+    [
+        deg(&a.num) + deg(&b.num),
+        deg(&a.den) + deg(&b.den),
+        deg(&a.excluded) + deg(&b.excluded),
+    ]
+}
+
+fn div_degrees(a: &Rational, b: &Rational) -> [usize; 3] {
+    [
+        deg(&a.num) + deg(&b.den),
+        deg(&a.den) + deg(&b.num),
+        deg(&a.excluded) + deg(&b.excluded) + deg(&b.num),
+    ]
+}
+
+/// Bounds for `r` to the power `e`: every part of `r` times `|e|`, and
+/// its excluded points once more.
+fn pow_degrees(r: &Rational, e: i64) -> [usize; 3] {
+    let n = usize::try_from(e.unsigned_abs()).unwrap_or(usize::MAX);
+    let size = deg(&r.num).max(deg(&r.den));
+    [
+        size.saturating_mul(n),
+        size.saturating_mul(n),
+        size.saturating_mul(n).saturating_add(deg(&r.excluded)),
+    ]
+}
+
 struct Parser {
     toks: Vec<(usize, Tok)>,
     pos: usize,
     var: Option<char>,
+    /// Brackets and signs open around the current token.
+    depth: usize,
 }
 
 impl Parser {
@@ -241,6 +339,15 @@ impl Parser {
             .get(self.pos)
             .map(|(i, _)| *i)
             .unwrap_or(usize::MAX)
+    }
+    /// One level deeper (a bracket or a sign), within [`MAX_DEPTH`]: the
+    /// parser recurses once per level, so this bounds its stack.
+    fn enter(&mut self) -> Result<(), ParseError> {
+        if self.depth >= MAX_DEPTH {
+            return Err(ParseError::TooDeep { max: MAX_DEPTH });
+        }
+        self.depth += 1;
+        Ok(())
     }
     fn unexpected(&self) -> ParseError {
         match self.toks.get(self.pos) {
@@ -259,6 +366,7 @@ impl Parser {
         while let Some(Tok::Op(op @ ('+' | '-'))) = self.peek().cloned() {
             self.pos += 1;
             let rhs = self.term()?;
+            within_degree(add_degrees(&acc, &rhs))?;
             acc = if op == '+' {
                 acc.add(&rhs)
             } else {
@@ -273,27 +381,35 @@ impl Parser {
             match self.peek().cloned() {
                 Some(Tok::Op('*')) => {
                     self.pos += 1;
-                    acc = acc.mul(&self.unary()?);
+                    let rhs = self.unary()?;
+                    within_degree(mul_degrees(&acc, &rhs))?;
+                    acc = acc.mul(&rhs);
                 }
                 Some(Tok::Op('/')) => {
                     self.pos += 1;
-                    acc = acc.div(&self.unary()?)?;
+                    let rhs = self.unary()?;
+                    within_degree(div_degrees(&acc, &rhs))?;
+                    acc = acc.div(&rhs)?;
                 }
                 // Implicit multiplication: 2x, x(x+1), (x+1)(x-1), 2(3).
-                Some(Tok::Num(_) | Tok::Var(_) | Tok::LParen) => acc = acc.mul(&self.power()?),
+                Some(Tok::Num(_) | Tok::Var(_) | Tok::LParen) => {
+                    let rhs = self.power()?;
+                    within_degree(mul_degrees(&acc, &rhs))?;
+                    acc = acc.mul(&rhs);
+                }
                 _ => return Ok(acc),
             }
         }
     }
     fn unary(&mut self) -> Result<Rational, ParseError> {
         match self.peek() {
-            Some(Tok::Op('-')) => {
+            Some(Tok::Op(sign @ ('-' | '+'))) => {
+                let negate = *sign == '-';
                 self.pos += 1;
-                Ok(self.unary()?.neg())
-            }
-            Some(Tok::Op('+')) => {
-                self.pos += 1;
-                self.unary()
+                self.enter()?;
+                let r = self.unary()?;
+                self.depth -= 1;
+                Ok(if negate { r.neg() } else { r })
             }
             _ => self.power(),
         }
@@ -303,12 +419,14 @@ impl Parser {
         match self.peek().cloned() {
             Some(Tok::Sup(e)) => {
                 self.pos += 1;
+                within_degree(pow_degrees(&base, e))?;
                 base.powi(e)
             }
             Some(Tok::Op('^')) => {
                 self.pos += 1;
                 let at = self.at();
                 let e = self.exponent(at)?;
+                within_degree(pow_degrees(&base, e))?;
                 base.powi(e)
             }
             _ => Ok(base),
@@ -365,11 +483,13 @@ impl Parser {
             }
             Some(Tok::LParen) => {
                 self.pos += 1;
+                self.enter()?;
                 let e = self.expr()?;
                 if self.peek() != Some(&Tok::RParen) {
                     return Err(self.unexpected());
                 }
                 self.pos += 1;
+                self.depth -= 1;
                 Ok(e)
             }
             _ => Err(self.unexpected()),
@@ -411,7 +531,17 @@ fn alternatives(s: &str) -> Vec<String> {
 /// product of the alternatives' `left − right`, with every alternative's
 /// excluded points. The unknown's letter found in the line, if any.
 pub fn parse_line(s: &str) -> Result<(Line, Option<char>), ParseError> {
+    if s.chars().count() > MAX_LINE_CHARS {
+        return Err(ParseError::TooLong {
+            max: MAX_LINE_CHARS,
+        });
+    }
     let alts = alternatives(s);
+    if alts.len() > MAX_ALTERNATIVES {
+        return Err(ParseError::TooManyAlternatives {
+            max: MAX_ALTERNATIVES,
+        });
+    }
     if alts.len() > 1 {
         let mut product: Option<Rational> = None;
         let mut var = None;
@@ -437,7 +567,10 @@ pub fn parse_line(s: &str) -> Result<(Line, Option<char>), ParseError> {
             };
             product = Some(match product {
                 None => part,
-                Some(p) => p.mul(&part),
+                Some(p) => {
+                    within_degree(mul_degrees(&p, &part))?;
+                    p.mul(&part)
+                }
             });
         }
         return Ok((
@@ -461,6 +594,7 @@ fn parse_single(s: &str) -> Result<(Line, Option<char>), ParseError> {
         toks,
         pos: 0,
         var: None,
+        depth: 0,
     };
     let left = p.expr()?;
     if eqs == 0 {
