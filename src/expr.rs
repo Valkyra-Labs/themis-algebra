@@ -334,11 +334,13 @@ impl Parser {
     fn peek(&self) -> Option<&Tok> {
         self.toks.get(self.pos).map(|(_, t)| t)
     }
+    /// The position of the current token, or just after the last one at
+    /// the end of the line.
     fn at(&self) -> usize {
-        self.toks
-            .get(self.pos)
-            .map(|(i, _)| *i)
-            .unwrap_or(usize::MAX)
+        match self.toks.get(self.pos) {
+            Some((i, _)) => *i,
+            None => self.toks.last().map(|(i, _)| i + 1).unwrap_or(0),
+        }
     }
     /// One level deeper (a bracket or a sign), within [`MAX_DEPTH`]: the
     /// parser recurses once per level, so this bounds its stack.
@@ -356,7 +358,7 @@ impl Parser {
                 found: format!("{t:?}"),
             },
             None => ParseError::Unexpected {
-                at: self.toks.last().map(|(i, _)| *i + 1).unwrap_or(0),
+                at: self.at(),
                 found: "end of line".into(),
             },
         }
@@ -680,5 +682,18 @@ mod tests {
             parse_line("x + = 1"),
             Err(ParseError::Unexpected { .. })
         ));
+    }
+
+    #[test]
+    fn an_exponent_missing_at_the_end_of_the_line_is_placed_there() {
+        // After the caret, where the exponent should be.
+        assert_eq!(
+            parse_line("x^"),
+            Err(ParseError::ExponentNotInteger { at: 2 })
+        );
+        assert_eq!(
+            ParseError::ExponentNotInteger { at: 2 }.to_string(),
+            "the exponent at position 3 must be a whole number"
+        );
     }
 }
