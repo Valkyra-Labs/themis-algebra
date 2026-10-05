@@ -1,11 +1,11 @@
 //! Lines a learner can type or paste that are far beyond school algebra:
-//! very long, deeply nested, of a huge degree or with many alternatives.
-//! Each gets an error naming the limit it is over, quickly; none overflows
-//! the stack or runs for minutes.
+//! very long, deeply nested, of a huge degree, with many alternatives, or
+//! with huge coefficients. Each gets an error naming the limit it is over,
+//! or a verdict, quickly; none overflows the stack or runs for minutes.
 
 use std::time::{Duration, Instant};
 use themis_algebra::{
-    check_step, parse_line, CheckError, ParseError, MAX_ALTERNATIVES, MAX_DEGREE, MAX_DEPTH,
+    check_step, parse_line, solve, CheckError, ParseError, MAX_ALTERNATIVES, MAX_DEGREE, MAX_DEPTH,
     MAX_LINE_CHARS,
 };
 
@@ -90,6 +90,53 @@ fn more_alternatives_than_the_limit_are_an_error() {
             max: MAX_ALTERNATIVES
         }
     );
+}
+
+#[test]
+fn huge_coefficients_are_checked_quickly() {
+    // Short lines whose constant and leading coefficients have thousands
+    // of divisors: every pair of divisors used to be tried as a root.
+    for line in [
+        "735134400x^2 + x + 735134400 = 0",
+        "963761198400x^2 + x + 963761198400 = 0",
+        "963761198400x^3 + x + 963761198400 = 0",
+    ] {
+        let t = Instant::now();
+        let c = check_step(line, "x = 1");
+        assert!(c.is_ok(), "{line}: {c:?}");
+        assert!(
+            t.elapsed() < Duration::from_secs(5),
+            "{line}: {:?}",
+            t.elapsed()
+        );
+    }
+    // The quadratic has no real root, and says so exactly.
+    assert_eq!(
+        solve("963761198400x^2 + x + 963761198400 = 0")
+            .unwrap()
+            .roots()
+            .unwrap(),
+        vec![]
+    );
+}
+
+#[test]
+fn bounding_the_root_search_keeps_school_answers_exact() {
+    // Ten fractions: their product's coefficients have hundreds of
+    // divisors each, and every root is still found exactly.
+    let answers = (1..=10)
+        .map(|k| format!("x = {k}/{}", k + 1))
+        .collect::<Vec<_>>()
+        .join(" or ");
+    let roots: Vec<String> = solve(&answers)
+        .unwrap()
+        .roots()
+        .unwrap()
+        .iter()
+        .map(|r| r.to_string())
+        .collect();
+    let expected: Vec<String> = (1..=10).map(|k| format!("{k}/{}", k + 1)).collect();
+    assert_eq!(roots, expected);
 }
 
 #[test]

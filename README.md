@@ -46,6 +46,10 @@ are read as the union of their solution sets.
 - Two equations are compared as sets with polynomial GCDs; the roots of
   what differs are counted exactly with Sturm sequences and written
   exactly when rational or quadratic (approximated beyond degree two).
+  Rational roots are found among the fractions the rational root theorem
+  allows, unless the leading and constant coefficients have so many
+  divisors that the search would be long; those roots are then
+  approximated too.
 - Two expressions are compared as functions on their common domain; when
   they differ, a point where both are defined shows the difference.
 

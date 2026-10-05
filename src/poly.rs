@@ -251,9 +251,31 @@ impl Poly {
     }
 }
 
+/// The work [`rational_roots`] may spend on candidates: their number
+/// (pairs of divisors) times the degree, the number of steps of each
+/// evaluation. A number up to 10^12 can have thousands of divisors, so a
+/// short line could otherwise ask for tens of millions of evaluations.
+const MAX_ROOT_CANDIDATE_STEPS: usize = 2_000_000;
+
+/// `q^d · f(p/q)` for the integer coefficients of `f` (constant term
+/// first, degree d): zero exactly when `p/q` is a root, and computed
+/// without fractions, so with no gcd at each step.
+fn eval_scaled(ints: &[BigInt], p: &BigInt, q: &BigInt) -> BigInt {
+    let mut terms = ints.iter().rev();
+    let mut acc = terms.next().cloned().unwrap_or_else(BigInt::zero);
+    let mut q_pow = BigInt::one();
+    for a in terms {
+        q_pow *= q;
+        acc = acc * p + a * &q_pow;
+    }
+    acc
+}
+
 /// Rational roots of a polynomial with rational coefficients (rational
 /// root theorem on the integer-cleared polynomial). Divisor enumeration
-/// is capped; school exercises stay far below the cap.
+/// and the number of candidates are capped; school exercises stay far
+/// below both caps. Past a cap, the roots not found here are left to
+/// [`isolate_and_refine`].
 fn rational_roots(p: &Poly) -> Vec<Q> {
     let Some(deg) = p.degree() else { return vec![] };
     if deg == 0 {
@@ -275,14 +297,16 @@ fn rational_roots(p: &Poly) -> Vec<Q> {
     let (Some(ps), Some(qs)) = (divisors(&a0), divisors(&an)) else {
         return out;
     };
-    let mut seen: Vec<Q> = Vec::new();
+    if ps.len().saturating_mul(qs.len()).saturating_mul(deg) > MAX_ROOT_CANDIDATE_STEPS {
+        return out;
+    }
     for pp in &ps {
-        for qq in &qs {
+        // Each fraction once, in lowest terms.
+        for qq in qs.iter().filter(|qq| pp.gcd(qq).is_one()) {
             for sign in [1, -1] {
-                let r = Q::new(BigInt::from(sign) * pp.clone(), qq.clone());
-                if !seen.contains(&r) && p.eval(&r).is_zero() {
-                    seen.push(r.clone());
-                    out.push(r);
+                let num = BigInt::from(sign) * pp;
+                if eval_scaled(&ints, &num, qq).is_zero() {
+                    out.push(Q::new(num, qq.clone()));
                 }
             }
         }
