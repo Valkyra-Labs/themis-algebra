@@ -176,15 +176,19 @@ fn compare_solutions(a: &Solutions, b: &Solutions) -> Verdict {
     }
 }
 
-/// A rational x where both polynomials are nonzero (small integers first,
-/// then halves).
-fn defined_point(a: &Poly, b: &Poly, differ: &Poly) -> Option<Q> {
-    let candidates = (0..40i64).flat_map(|n| [q(n), q(-n)]).chain(
-        (1..40i64).flat_map(|n| [Q::new(n.into(), 2.into()), Q::new((-n).into(), 2.into())]),
-    );
-    candidates
-        .into_iter()
-        .find(|x| !a.eval(x).is_zero() && !b.eval(x).is_zero() && !differ.eval(x).is_zero())
+/// A rational x where all three polynomials are nonzero: small integers
+/// first, then halves, then larger integers. None of them is the zero
+/// polynomial, so together they vanish at finitely many points and the
+/// search ends within that many candidates past the first 79.
+fn defined_point(a: &Poly, b: &Poly, differ: &Poly) -> Q {
+    let candidates = (0..40i64)
+        .flat_map(|n| [q(n), q(-n)])
+        .chain((1..40i64).flat_map(|n| [Q::new(n.into(), 2.into()), Q::new((-n).into(), 2.into())]))
+        .chain((40..).flat_map(|n| [q(n), q(-n)]));
+    let mut found = candidates
+        .filter(|x| !a.eval(x).is_zero() && !b.eval(x).is_zero() && !differ.eval(x).is_zero());
+    // The candidates never run out, so `next` always finds one.
+    found.next().unwrap_or_else(|| q(0))
 }
 
 fn eval(r: &Rational, x: &Q) -> Q {
@@ -213,7 +217,7 @@ pub fn check_step(before: &str, after: &str) -> Result<StepCheck, CheckError> {
         if diff.is_zero() {
             Verdict::Equivalent
         } else {
-            let x = defined_point(&ra.excluded, &rb.excluded, &diff.num).unwrap_or_else(|| q(1000));
+            let x = defined_point(&ra.excluded, &rb.excluded, &diff.num);
             Verdict::NotEqual {
                 witness: x.clone(),
                 before: eval(&ra, &x),
@@ -307,4 +311,30 @@ pub fn explain(c: &StepCheck) -> String {
         ));
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_witness_is_found_where_every_early_candidate_is_excluded() {
+        // A polynomial that vanishes at every small integer and half the
+        // search tries first, and at 1000.
+        let mut ex = Poly::from_coeffs(vec![q(-1000), q(1)]);
+        for n in 0..40i64 {
+            for x in [
+                q(n),
+                q(-n),
+                Q::new(n.into(), 2.into()),
+                Q::new((-n).into(), 2.into()),
+            ] {
+                if !ex.eval(&x).is_zero() {
+                    ex = ex.mul(&Poly::from_coeffs(vec![-x, q(1)]));
+                }
+            }
+        }
+        let x = defined_point(&ex, &Poly::one(), &Poly::one());
+        assert!(!ex.eval(&x).is_zero(), "x = {x}");
+    }
 }

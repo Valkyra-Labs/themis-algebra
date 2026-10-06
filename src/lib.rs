@@ -23,5 +23,7 @@ pub mod poly;
 pub mod wasm;
 
 pub use check::{check_step, explain, solve, CheckError, Solutions, StepCheck, Verdict};
-pub use expr::{parse_line, Line, ParseError};
+pub use expr::{
+    parse_line, Line, ParseError, MAX_ALTERNATIVES, MAX_DEGREE, MAX_DEPTH, MAX_LINE_CHARS,
+};
 pub use poly::{Poly, Root, Q};

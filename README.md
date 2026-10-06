@@ -46,6 +46,10 @@ are read as the union of their solution sets.
 - Two equations are compared as sets with polynomial GCDs; the roots of
   what differs are counted exactly with Sturm sequences and written
   exactly when rational or quadratic (approximated beyond degree two).
+  Rational roots are found among the fractions the rational root theorem
+  allows, unless the leading and constant coefficients have so many
+  divisors that the search would be long; those roots are then
+  approximated too.
 - Two expressions are compared as functions on their common domain; when
   they differ, a point where both are defined shows the difference.
 
@@ -58,6 +62,25 @@ zero, `(a + b)² = a² + b²`, and cancelling a factor without keeping the
 restriction. The test corpus (`tests/corpus.rs`, with its table of
 equation steps in `tests/common/mod.rs`) holds each of them with the
 verdict and the sentence a learner reads.
+
+## Limits
+
+A line is checked on the device that shows it (in a browser, as
+WebAssembly), so what one line may ask for is bounded. A line over a
+limit gets a `ParseError` that names the limit, never a stack overflow
+or a search without end:
+
+| Limit | Value | Error |
+|---|---|---|
+| Characters in a line | 500 (`MAX_LINE_CHARS`) | `TooLong` |
+| Brackets and signs nested in each other | 64 (`MAX_DEPTH`) | `TooDeep` |
+| Degree of a numerator, a denominator or the excluded points while a line is read | 64 (`MAX_DEGREE`), the largest exponent | `TooComplex` |
+| Alternatives in an answer line | 12 (`MAX_ALTERNATIVES`) | `TooManyAlternatives` |
+
+Within these limits a line made to be hard (a polynomial of a high degree
+with coefficients of many digits) can still take seconds, so an
+application should check lines away from its interface thread, with a
+time limit of its own.
 
 ## Testing
 
